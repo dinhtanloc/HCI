@@ -14,8 +14,8 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 char auth[] = BLYNK_AUTH_TOKEN; //Enter your Blynk auth token
-char ssid[] = "Bạn có thích Phô Mai hong"; //Enter your WIFI name
-char pass[] = "chitranne"; //Enter your WIFI passowrd
+char ssid[] = "Van Nam"; //Enter your WIFI name
+char pass[] = "bemuc123"; //Enter your WIFI passowrd
 // figures  for Blynk output
 int x;
 int y;

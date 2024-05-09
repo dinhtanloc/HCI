@@ -14,8 +14,8 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 char auth[] = BLYNK_AUTH_TOKEN; //Enter your Blynk auth token
-char ssid[] = "Bạn có thích Phô Mai hong"; //Enter your WIFI name
-char pass[] = "chitranne"; //Enter your WIFI passowrd
+char ssid[] = "Van Nam"; //Enter your WIFI name
+char pass[] = "bemuc123"; //Enter your WIFI passowrd
 // figures  for Blynk output
 int x;
 int y;
@@ -24,10 +24,10 @@ int Speed;
 
 #define d_speed 1.5
 #define d_dir 3     
-#define IN1 27
-#define IN2 14
-#define IN3 2
-#define IN4 13
+#define IN1 11
+#define IN2 10
+#define IN3 9
+#define IN4 3
 char content = 'P';
 int MotorAspeed, MotorBspeed;
 float MOTORSLACK_A = 40;                   // Compensate for motor slack range (low PWM values which result in no motor engagement)

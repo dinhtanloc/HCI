@@ -14,8 +14,8 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 char auth[] = BLYNK_AUTH_TOKEN; //Enter your Blynk auth token
-char ssid[] = "Bạn có thích Phô Mai hong"; //Enter your WIFI name
-char pass[] = "chitranne"; //Enter your WIFI passowrd
+char ssid[] = "Van Nam"; //Enter your WIFI name
+char pass[] = "bemuc123"; //Enter your WIFI passowrd
 // figures  for Blynk output
 int x;
 int y;
@@ -24,10 +24,10 @@ int Speed;
 
 #define d_speed 1.5
 #define d_dir 3     
-#define IN1 27
-#define IN2 14
-#define IN3 2
-#define IN4 13
+#define IN1 11
+#define IN2 10
+#define IN3 9
+#define IN4 3
 char content = 'P';
 int MotorAspeed, MotorBspeed;
 float MOTORSLACK_A = 40;                   // Compensate for motor slack range (low PWM values which result in no motor engagement)
@@ -139,7 +139,42 @@ void init_imu() {
     Serial.println(F(")"));
   }
 }
-
+void getvalues() {
+  // if programming failed, don't try to do anything
+    if (!dmpReady) return;
+    // wait for MPU interrupt or extra packet(s) available
+  while (!mpuInterrupt && fifoCount < packetSize) {
+    new_pid();
+  }
+  // reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+    // get current FIFO count
+  fifoCount = mpu.getFIFOCount();
+    // check for overflow (this should never happen unless our code is too inefficient)
+  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
+  {
+    // reset so we can continue cleanly
+    mpu.resetFIFO();
+    Serial.println(F("FIFO overflow!"));
+        // otherwise, check for DMP data ready interrupt (this should happen frequently)
+  }
+  else if (mpuIntStatus & 0x02)
+  {
+    // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+        // read a packet from FIFO
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+        // track FIFO count here in case there is > 1 packet available
+    // (this lets us immediately read more without waiting for an interrupt)
+    fifoCount -= packetSize;
+        mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
+    mpu.dmpGetGravity(&gravity, &q); //get value for gravity
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
+        input = ypr[1] * 180 / M_PI + 180;
+    yinput = ypr[0] * 180 / M_PI;
+  }
+}
 double compensate_slack(double yOutput, double Output, bool A) {
   // Compensate for DC motor non-linear "dead" zone around 0 where small values don't result in movement
   //yOutput is for left,right control
@@ -190,43 +225,6 @@ void new_pid() {
   MotorAspeed = map(Speed, 0, 255, -255, 255);
   MotorBspeed = MotorAspeed;
   motorspeed(MotorAspeed, MotorBspeed);            //change speed
-}
-
-void getvalues() {
-  // if programming failed, don't try to do anything
-    if (!dmpReady) return;
-    // wait for MPU interrupt or extra packet(s) available
-  while (!mpuInterrupt && fifoCount < packetSize) {
-    new_pid();
-  }
-  // reset interrupt flag and get INT_STATUS byte
-  mpuInterrupt = false;
-  mpuIntStatus = mpu.getIntStatus();
-    // get current FIFO count
-  fifoCount = mpu.getFIFOCount();
-    // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
-  {
-    // reset so we can continue cleanly
-    mpu.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-        // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus & 0x02)
-  {
-    // wait for correct available data length, should be a VERY short wait
-    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-        // read a packet from FIFO
-    mpu.getFIFOBytes(fifoBuffer, packetSize);
-        // track FIFO count here in case there is > 1 packet available
-    // (this lets us immediately read more without waiting for an interrupt)
-    fifoCount -= packetSize;
-        mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
-    mpu.dmpGetGravity(&gravity, &q); //get value for gravity
-    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-        input = ypr[1] * 180 / M_PI + 180;
-    yinput = ypr[0] * 180 / M_PI;
-  }
 }
 //Fast digitalWrite is implemented
 void Blynk_control() {

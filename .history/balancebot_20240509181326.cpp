@@ -10,12 +10,12 @@
 #include "I2Cdev.h"
 #include <Wire.h>
 #include <PID_v1.h>
-// #include <SoftwareSerial.h>
+#include <SoftwareSerial.h>
 #include "MPU6050_6Axis_MotionApps20.h"
 
 char auth[] = BLYNK_AUTH_TOKEN; //Enter your Blynk auth token
-char ssid[] = "Bạn có thích Phô Mai hong"; //Enter your WIFI name
-char pass[] = "chitranne"; //Enter your WIFI passowrd
+char ssid[] = "Van Nam"; //Enter your WIFI name
+char pass[] = "bemuc123"; //Enter your WIFI passowrd
 // figures  for Blynk output
 int x;
 int y;
@@ -24,10 +24,10 @@ int Speed;
 
 #define d_speed 1.5
 #define d_dir 3     
-#define IN1 27
-#define IN2 14
-#define IN3 2
-#define IN4 13
+#define IN1 11
+#define IN2 10
+#define IN3 9
+#define IN4 3
 char content = 'P';
 int MotorAspeed, MotorBspeed;
 float MOTORSLACK_A = 40;                   // Compensate for motor slack range (low PWM values which result in no motor engagement)
@@ -35,9 +35,9 @@ float MOTORSLACK_B = 40;
 #define BALANCE_PID_MIN -255              // Define PID limits to match PWM max in reverse and foward
 #define BALANCE_PID_MAX 255
 MPU6050 mpu;
-// const int rxpin = 6;       //Bluetooth serial stuff
-// const int txpin = 5;
-// SoftwareSerial blue(rxpin, txpin);
+const int rxpin = 6;       //Bluetooth serial stuff
+const int txpin = 5;
+SoftwareSerial blue(rxpin, txpin);
 //Ultrasonic ultrasonic(A0, A1);
 //int distance;
 // MPU control/status vars
@@ -87,6 +87,23 @@ BLYNK_WRITE(V2) {
 void dmpDataReady()
 {
   mpuInterrupt = true;
+}
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(auth, ssid, pass);
+  blue.begin(9600);
+  blue.setTimeout(10);
+  init_imu();           //initialiser le MPU6050
+  initmot();            //initialiser les moteurs
+  originalSetpoint = 176;  //consigne
+  yoriginalSetpoint = 0.1;
+  setpoint = originalSetpoint ;
+  ysetpoint = yoriginalSetpoint ;
+}
+void loop() {
+    getvalues();
+    Blynk_control();
+    printval();
 }
 void init_imu() {
   // initialize device
@@ -139,7 +156,83 @@ void init_imu() {
     Serial.println(F(")"));
   }
 }
-
+void getvalues() {
+  // if programming failed, don't try to do anything
+    if (!dmpReady) return;
+    // wait for MPU interrupt or extra packet(s) available
+  while (!mpuInterrupt && fifoCount < packetSize) {
+    new_pid();
+  }
+  // reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+    // get current FIFO count
+  fifoCount = mpu.getFIFOCount();
+    // check for overflow (this should never happen unless our code is too inefficient)
+  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
+  {
+    // reset so we can continue cleanly
+    mpu.resetFIFO();
+    Serial.println(F("FIFO overflow!"));
+        // otherwise, check for DMP data ready interrupt (this should happen frequently)
+  }
+  else if (mpuIntStatus & 0x02)
+  {
+    // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+        // read a packet from FIFO
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+        // track FIFO count here in case there is > 1 packet available
+    // (this lets us immediately read more without waiting for an interrupt)
+    fifoCount -= packetSize;
+        mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
+    mpu.dmpGetGravity(&gravity, &q); //get value for gravity
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
+        input = ypr[1] * 180 / M_PI + 180;
+    yinput = ypr[0] * 180 / M_PI;
+  }
+}
+void new_pid() {
+  //Compute error
+  pid.Compute();
+  rot.Compute();
+  // Convert PID output to motor control
+  MotorAspeed = compensate_slack(youtput, output, 1);
+  MotorBspeed = compensate_slack(youtput, output, 0);
+  MotorAspeed = map(Speed, 0, 255, -255, 255);
+  MotorBspeed = MotorAspeed;
+  motorspeed(MotorAspeed, MotorBspeed);            //change speed
+}
+//Fast digitalWrite is implemented
+void Blynk_control() {
+  if (blue.available()) {
+    content = blue.read();
+    if (content == 'F')
+      setpoint = originalSetpoint - d_speed;//Serial.println(setpoint);}            //forward
+    else if (content == 'B')
+      setpoint = originalSetpoint + d_speed;//Serial.println(setpoint);}            //backward
+    else if (content == 'L')
+      ysetpoint = constrain((ysetpoint + yoriginalSetpoint - d_dir), -180, 180); //Serial.println(ysetpoint);}      //left
+    else if (content == 'R')
+      ysetpoint = constrain(ysetpoint + yoriginalSetpoint + d_dir, -180, 180); //Serial.println(ysetpoint);}        //right
+    else if (content == 'S') {
+      setpoint = originalSetpoint;
+    }
+  }
+  else content = 'P';
+}
+void initmot() {
+  //Initialise the Motor outpu pins
+  pinMode (IN4, OUTPUT);
+  pinMode (IN3, OUTPUT);
+  pinMode (IN2, OUTPUT);
+  pinMode (IN1, OUTPUT);
+    //By default turn off both the motor
+  analogWrite(IN4, LOW);
+  analogWrite(IN3, LOW);
+  analogWrite(IN2, LOW);
+  analogWrite(IN1, LOW);
+}
 double compensate_slack(double yOutput, double Output, bool A) {
   // Compensate for DC motor non-linear "dead" zone around 0 where small values don't result in movement
   //yOutput is for left,right control
@@ -180,93 +273,6 @@ void motorspeed(int MotorAspeed, int MotorBspeed) {
     analogWrite(IN4, abs(MotorBspeed));
   }
 }
-void new_pid() {
-  //Compute error
-  pid.Compute();
-  rot.Compute();
-  // Convert PID output to motor control
-  MotorAspeed = compensate_slack(youtput, output, 1);
-  MotorBspeed = compensate_slack(youtput, output, 0);
-  MotorAspeed = map(Speed, 0, 255, -255, 255);
-  MotorBspeed = MotorAspeed;
-  motorspeed(MotorAspeed, MotorBspeed);            //change speed
-}
-
-void getvalues() {
-  // if programming failed, don't try to do anything
-    if (!dmpReady) return;
-    // wait for MPU interrupt or extra packet(s) available
-  while (!mpuInterrupt && fifoCount < packetSize) {
-    new_pid();
-  }
-  // reset interrupt flag and get INT_STATUS byte
-  mpuInterrupt = false;
-  mpuIntStatus = mpu.getIntStatus();
-    // get current FIFO count
-  fifoCount = mpu.getFIFOCount();
-    // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
-  {
-    // reset so we can continue cleanly
-    mpu.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-        // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  }
-  else if (mpuIntStatus & 0x02)
-  {
-    // wait for correct available data length, should be a VERY short wait
-    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-        // read a packet from FIFO
-    mpu.getFIFOBytes(fifoBuffer, packetSize);
-        // track FIFO count here in case there is > 1 packet available
-    // (this lets us immediately read more without waiting for an interrupt)
-    fifoCount -= packetSize;
-        mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
-    mpu.dmpGetGravity(&gravity, &q); //get value for gravity
-    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-        input = ypr[1] * 180 / M_PI + 180;
-    yinput = ypr[0] * 180 / M_PI;
-  }
-}
-//Fast digitalWrite is implemented
-void Blynk_control() {
-    if (y > 70) {
-    //   carForward();
-      setpoint = originalSetpoint - d_speed;//Serial.println(setpoint);}            //forward
-      Serial.println("carForward");
-  } else if (y < 30) {
-    //   carBackward();
-      Serial.println("carBackward");
-      setpoint = originalSetpoint + d_speed;//Serial.println(setpoint);}            //backward
-  } else if (x < 30) {
-    //   carLeft();
-      Serial.println("carLeft");
-      ysetpoint = constrain((ysetpoint + yoriginalSetpoint - d_dir), -180, 180); //Serial.println(ysetpoint);}      //left
-  } else if (x > 70) {
-    //   carRight();
-      Serial.println("carRight");
-      ysetpoint = constrain(ysetpoint + yoriginalSetpoint + d_dir, -180, 180); //Serial.println(ysetpoint);}        //right
-  } else if (x < 70 && x > 30 && y < 70 && y > 30) {
-    //   carStop();
-      Serial.println("carstop");
-      setpoint = originalSetpoint;
-  }
-
-//   }
-//   else content = 'P';
-}
-void initmot() {
-  //Initialise the Motor outpu pins
-  pinMode (IN4, OUTPUT);
-  pinMode (IN3, OUTPUT);
-  pinMode (IN2, OUTPUT);
-  pinMode (IN1, OUTPUT);
-    //By default turn off both the motor
-  analogWrite(IN4, LOW);
-  analogWrite(IN3, LOW);
-  analogWrite(IN2, LOW);
-  analogWrite(IN1, LOW);
-}
 void printval()
 {
   Serial.print(yinput); Serial.print("\t");
@@ -279,23 +285,4 @@ void printval()
   Serial.print(output); Serial.print("\t"); Serial.print("\t");
   Serial.print(MotorAspeed); Serial.print("\t");
   Serial.print(MotorBspeed); Serial.print("\t"); Serial.print(content); Serial.println("\t");
-}
-
-void setup() {
-  Serial.begin(115200);
-  Blynk.begin(auth, ssid, pass);
-  // blue.begin(9600);
-  // blue.setTimeout(10);
-  init_imu();           //initialiser le MPU6050
-  initmot();            //initialiser les moteurs
-  originalSetpoint = 176;  //consigne
-  yoriginalSetpoint = 0.1;
-  setpoint = originalSetpoint ;
-  ysetpoint = yoriginalSetpoint ;
-}
-void loop() {
-    Blynk.run();
-    getvalues();
-    Blynk_control();
-    printval();
 }

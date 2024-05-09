@@ -14,8 +14,8 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 char auth[] = BLYNK_AUTH_TOKEN; //Enter your Blynk auth token
-char ssid[] = "Bạn có thích Phô Mai hong"; //Enter your WIFI name
-char pass[] = "chitranne"; //Enter your WIFI passowrd
+char ssid[] = "Van Nam"; //Enter your WIFI name
+char pass[] = "bemuc123"; //Enter your WIFI passowrd
 // figures  for Blynk output
 int x;
 int y;
@@ -24,10 +24,10 @@ int Speed;
 
 #define d_speed 1.5
 #define d_dir 3     
-#define IN1 27
-#define IN2 14
-#define IN3 2
-#define IN4 13
+#define IN1 11
+#define IN2 10
+#define IN3 9
+#define IN4 3
 char content = 'P';
 int MotorAspeed, MotorBspeed;
 float MOTORSLACK_A = 40;                   // Compensate for motor slack range (low PWM values which result in no motor engagement)
@@ -88,6 +88,24 @@ void dmpDataReady()
 {
   mpuInterrupt = true;
 }
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(auth, ssid, pass);
+  // blue.begin(9600);
+  // blue.setTimeout(10);
+  init_imu();           //initialiser le MPU6050
+  initmot();            //initialiser les moteurs
+  originalSetpoint = 176;  //consigne
+  yoriginalSetpoint = 0.1;
+  setpoint = originalSetpoint ;
+  ysetpoint = yoriginalSetpoint ;
+}
+void loop() {
+    Blynk.run();
+    getvalues();
+    Blynk_control();
+    printval();
+}
 void init_imu() {
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
@@ -139,59 +157,6 @@ void init_imu() {
     Serial.println(F(")"));
   }
 }
-
-double compensate_slack(double yOutput, double Output, bool A) {
-  // Compensate for DC motor non-linear "dead" zone around 0 where small values don't result in movement
-  //yOutput is for left,right control
-  if (A)
-  {
-    if (Output >= 0)
-      Output = Output + MOTORSLACK_A - yOutput;
-    if (Output < 0)
-      Output = Output - MOTORSLACK_A - yOutput;
-  }
-  else
-  {
-    if (Output >= 0)
-      Output = Output + MOTORSLACK_B + yOutput;
-    if (Output < 0)
-      Output = Output - MOTORSLACK_B + yOutput;
-  }
-  Output = constrain(Output, BALANCE_PID_MIN, BALANCE_PID_MAX);
-  return Output;
-}
-void motorspeed(int MotorAspeed, int MotorBspeed) {
-      // Motor A control
-  if (MotorAspeed >= 0) {
-    analogWrite(IN1, abs(MotorAspeed));
-    digitalWrite(IN2, LOW);
-  }
-  else {
-    digitalWrite(IN1, LOW);
-    analogWrite(IN2, abs(MotorAspeed));
-  }
-    // Motor B control
-  if (MotorBspeed >= 0) {
-    analogWrite(IN3, abs(MotorBspeed));
-    digitalWrite(IN4, LOW);
-  }
-  else {
-    digitalWrite(IN3, LOW);
-    analogWrite(IN4, abs(MotorBspeed));
-  }
-}
-void new_pid() {
-  //Compute error
-  pid.Compute();
-  rot.Compute();
-  // Convert PID output to motor control
-  MotorAspeed = compensate_slack(youtput, output, 1);
-  MotorBspeed = compensate_slack(youtput, output, 0);
-  MotorAspeed = map(Speed, 0, 255, -255, 255);
-  MotorBspeed = MotorAspeed;
-  motorspeed(MotorAspeed, MotorBspeed);            //change speed
-}
-
 void getvalues() {
   // if programming failed, don't try to do anything
     if (!dmpReady) return;
@@ -227,6 +192,17 @@ void getvalues() {
         input = ypr[1] * 180 / M_PI + 180;
     yinput = ypr[0] * 180 / M_PI;
   }
+}
+void new_pid() {
+  //Compute error
+  pid.Compute();
+  rot.Compute();
+  // Convert PID output to motor control
+  MotorAspeed = compensate_slack(youtput, output, 1);
+  MotorBspeed = compensate_slack(youtput, output, 0);
+  MotorAspeed = map(Speed, 0, 255, -255, 255);
+  MotorBspeed = MotorAspeed;
+  motorspeed(MotorAspeed, MotorBspeed);            //change speed
 }
 //Fast digitalWrite is implemented
 void Blynk_control() {
@@ -267,6 +243,46 @@ void initmot() {
   analogWrite(IN2, LOW);
   analogWrite(IN1, LOW);
 }
+double compensate_slack(double yOutput, double Output, bool A) {
+  // Compensate for DC motor non-linear "dead" zone around 0 where small values don't result in movement
+  //yOutput is for left,right control
+  if (A)
+  {
+    if (Output >= 0)
+      Output = Output + MOTORSLACK_A - yOutput;
+    if (Output < 0)
+      Output = Output - MOTORSLACK_A - yOutput;
+  }
+  else
+  {
+    if (Output >= 0)
+      Output = Output + MOTORSLACK_B + yOutput;
+    if (Output < 0)
+      Output = Output - MOTORSLACK_B + yOutput;
+  }
+  Output = constrain(Output, BALANCE_PID_MIN, BALANCE_PID_MAX);
+  return Output;
+}
+void motorspeed(int MotorAspeed, int MotorBspeed) {
+      // Motor A control
+  if (MotorAspeed >= 0) {
+    analogWrite(IN1, abs(MotorAspeed));
+    digitalWrite(IN2, LOW);
+  }
+  else {
+    digitalWrite(IN1, LOW);
+    analogWrite(IN2, abs(MotorAspeed));
+  }
+    // Motor B control
+  if (MotorBspeed >= 0) {
+    analogWrite(IN3, abs(MotorBspeed));
+    digitalWrite(IN4, LOW);
+  }
+  else {
+    digitalWrite(IN3, LOW);
+    analogWrite(IN4, abs(MotorBspeed));
+  }
+}
 void printval()
 {
   Serial.print(yinput); Serial.print("\t");
@@ -279,23 +295,4 @@ void printval()
   Serial.print(output); Serial.print("\t"); Serial.print("\t");
   Serial.print(MotorAspeed); Serial.print("\t");
   Serial.print(MotorBspeed); Serial.print("\t"); Serial.print(content); Serial.println("\t");
-}
-
-void setup() {
-  Serial.begin(115200);
-  Blynk.begin(auth, ssid, pass);
-  // blue.begin(9600);
-  // blue.setTimeout(10);
-  init_imu();           //initialiser le MPU6050
-  initmot();            //initialiser les moteurs
-  originalSetpoint = 176;  //consigne
-  yoriginalSetpoint = 0.1;
-  setpoint = originalSetpoint ;
-  ysetpoint = yoriginalSetpoint ;
-}
-void loop() {
-    Blynk.run();
-    getvalues();
-    Blynk_control();
-    printval();
 }
